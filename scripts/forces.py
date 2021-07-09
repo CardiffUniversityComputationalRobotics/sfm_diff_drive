@@ -4,7 +4,6 @@ from numpy.core.defchararray import multiply
 import rospy
 
 from pedsim_msgs.msg import AgentStates, AgentGroups
-from move_base_msgs.msg import MoveBaseActionGoal
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist, Point
@@ -12,6 +11,8 @@ from tf import TransformListener
 import tf
 import numpy as np
 import math
+
+np.version.version
 
 
 class SocialForceModelDrive:
@@ -45,7 +46,7 @@ class SocialForceModelDrive:
         # constants for forces
         self.force_factor_desired = 1.0
         self.force_factor_social = 2.1
-        self.force_factor_obstacle = 10.0
+        self.force_factor_obstacle = 5
 
         self.tf = TransformListener()
 
@@ -133,6 +134,7 @@ class SocialForceModelDrive:
         desired_force = (
             norm_desired_direction * self.robot_max_vel - self.robot_current_vel
         ) / self.relaxation_time
+        print("desired force:", desired_force)
         return desired_force
 
     """
@@ -151,37 +153,44 @@ class SocialForceModelDrive:
 
         diff_robot_laser = np.array(diff_robot_laser, np.dtype("float64"))
 
+        for i in range(0, 360):
+            if diff_robot_laser[i] == np.nan:
+                diff_robot_laser[i] = np.inf
+
         # evaluo si el indice menor no existe
         if math.isnan(diff_robot_laser.min()):
             return np.array([0, 0, 0], np.dtype("float64"))
         else:
             min_index = np.where(diff_robot_laser == diff_robot_laser.min())[0][0]
 
-            # obtengo la posicion del valor minimo del laser en distancia
-            print(min_index - 180)
-            laser_pos = -1 * np.array(
-                [
-                    self.laser_ranges[min_index]
-                    * math.cos(math.radians(min_index - 180)),
-                    self.laser_ranges[min_index]
-                    * math.sin(math.radians(min_index - 180)),
-                    0,
-                ],
-                np.dtype("float64"),
-            )
-            print("laser_pos:", laser_pos)
+            if diff_robot_laser[min_index] < 0.3:
 
-            laser_vec_norm = np.linalg.norm(laser_pos)
-            if laser_vec_norm != 0:
-                norm_laser_direction = laser_pos / laser_vec_norm
+                # obtengo la posicion del valor minimo del laser en distancia
+                laser_pos = -1 * np.array(
+                    [
+                        self.laser_ranges[min_index]
+                        * math.cos(math.radians(min_index - 180)),
+                        self.laser_ranges[min_index]
+                        * math.sin(math.radians(min_index - 180)),
+                        0,
+                    ],
+                    np.dtype("float64"),
+                )
+                print("laser_pos:", laser_pos)
+
+                laser_vec_norm = np.linalg.norm(laser_pos)
+                if laser_vec_norm != 0:
+                    norm_laser_direction = laser_pos / laser_vec_norm
+                else:
+                    norm_laser_direction = np.array([0, 0, 0], np.dtype("float64"))
+
+                distance = diff_robot_laser[min_index] - self.agent_radius
+                force_amount = math.exp(-distance / self.force_sigma_obstacle)
+                final_rep_force = force_amount * norm_laser_direction
+                print("Obstacle force:", final_rep_force)
+                return final_rep_force
             else:
-                norm_laser_direction = np.array([0, 0, 0], np.dtype("float64"))
-
-            distance = diff_robot_laser[min_index] - self.agent_radius
-            force_amount = math.exp(-distance / self.force_sigma_obstacle)
-            final_rep_force = force_amount * -norm_laser_direction
-            print("Obstacle force:", final_rep_force)
-            return final_rep_force
+                return np.array([0, 0, 0], np.dtype("float64"))
 
     """
     funcion para obtener la fuerzas sociales de los alrededores
@@ -302,7 +311,7 @@ class SocialForceModelDrive:
                 cmd_vel_msg.linear.x = vx
                 cmd_vel_msg.angular.z = -w
 
-                # self.velocity_pub.publish(cmd_vel_msg)
+                self.velocity_pub.publish(cmd_vel_msg)
 
                 print("v lineal:", vx)
                 print("w:", -w)
