@@ -1,0 +1,5 @@
+<launch>
+
+    <node pkg="sfm_diff_robot" type="forces.py" output="screen" name="sfm_drive_node"/>
+
+</launch>

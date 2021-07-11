@@ -12,7 +12,7 @@ import tf
 import numpy as np
 import math
 
-np.version.version
+from simple_pid import PID
 
 
 class SocialForceModelDrive:
@@ -46,9 +46,13 @@ class SocialForceModelDrive:
         # constants for forces
         self.force_factor_desired = 1.0
         self.force_factor_social = 2.1
-        self.force_factor_obstacle = 5
+        self.force_factor_obstacle = 10
 
         self.tf = TransformListener()
+
+        # PID for rotation
+        self.pid_rotation = PID(0.25, 0.001, 0.0001, setpoint=0)
+        self.pid_rotation.output_limits = (-0.75, 0.75)
 
         #! subscribers
         self.agents_states_subs = rospy.Subscriber(
@@ -157,40 +161,41 @@ class SocialForceModelDrive:
             if diff_robot_laser[i] == np.nan:
                 diff_robot_laser[i] = np.inf
 
-        # evaluo si el indice menor no existe
-        if math.isnan(diff_robot_laser.min()):
-            return np.array([0, 0, 0], np.dtype("float64"))
-        else:
-            min_index = np.where(diff_robot_laser == diff_robot_laser.min())[0][0]
+        min_index = 0
+        tmp_val = 1000
+        for i in range(0, 360):
+            if diff_robot_laser[i] < tmp_val and diff_robot_laser[i] != 0:
+                tmp_val = diff_robot_laser[i]
+                min_index = i
 
-            if diff_robot_laser[min_index] < 0.3:
+        if diff_robot_laser[min_index] < 1:
+            print("minimo:", diff_robot_laser[min_index])
+            # obtengo la posicion del valor minimo del laser en distancia
+            laser_pos = -1 * np.array(
+                [
+                    self.laser_ranges[min_index]
+                    * math.cos(math.radians(min_index - 180)),
+                    self.laser_ranges[min_index]
+                    * math.sin(math.radians(min_index - 180)),
+                    0,
+                ],
+                np.dtype("float64"),
+            )
+            # print("laser_pos:", laser_pos)
 
-                # obtengo la posicion del valor minimo del laser en distancia
-                laser_pos = -1 * np.array(
-                    [
-                        self.laser_ranges[min_index]
-                        * math.cos(math.radians(min_index - 180)),
-                        self.laser_ranges[min_index]
-                        * math.sin(math.radians(min_index - 180)),
-                        0,
-                    ],
-                    np.dtype("float64"),
-                )
-                print("laser_pos:", laser_pos)
-
-                laser_vec_norm = np.linalg.norm(laser_pos)
-                if laser_vec_norm != 0:
-                    norm_laser_direction = laser_pos / laser_vec_norm
-                else:
-                    norm_laser_direction = np.array([0, 0, 0], np.dtype("float64"))
-
-                distance = diff_robot_laser[min_index] - self.agent_radius
-                force_amount = math.exp(-distance / self.force_sigma_obstacle)
-                final_rep_force = force_amount * norm_laser_direction
-                print("Obstacle force:", final_rep_force)
-                return final_rep_force
+            laser_vec_norm = np.linalg.norm(laser_pos)
+            if laser_vec_norm != 0:
+                norm_laser_direction = laser_pos / laser_vec_norm
             else:
-                return np.array([0, 0, 0], np.dtype("float64"))
+                norm_laser_direction = np.array([0, 0, 0], np.dtype("float64"))
+
+            distance = diff_robot_laser[min_index] - self.agent_radius
+            force_amount = math.exp(-distance / self.force_sigma_obstacle)
+            final_rep_force = force_amount * norm_laser_direction
+            print("Obstacle force:", final_rep_force)
+            return final_rep_force
+        else:
+            return np.array([0, 0, 0], np.dtype("float64"))
 
     """
     funcion para obtener la fuerzas sociales de los alrededores
@@ -257,6 +262,7 @@ class SocialForceModelDrive:
             )
 
             force += force_velocity + force_angle
+            print("Social force:", force)
         return force
 
     """
@@ -269,6 +275,7 @@ class SocialForceModelDrive:
                 complete_force = (
                     self.force_factor_desired * self.desired_force()
                     + self.force_factor_obstacle * self.obstacle_force()
+                    + self.force_factor_social * self.social_force()
                 )
 
                 print("complete force:", complete_force)
@@ -293,28 +300,35 @@ class SocialForceModelDrive:
                     quaternion
                 )[2]
 
-                angulo_velocidad = (
-                    angle(
-                        np.array([1, 0, 0], np.dtype("float64")),
-                        self.robot_current_vel,
-                    )
-                    - robot_offset_angle
+                print("offset_angle:", math.degrees(robot_offset_angle))
+
+                angulo_velocidad = angle(
+                    self.robot_current_vel, np.array([1, 0, 0], np.dtype("float64"))
                 )
 
-                print("angulo velocidad:", math.degrees(angulo_velocidad))
+                print("angulo_velocidad:", math.degrees(angulo_velocidad))
+
+                if self.robot_position[1] > self.current_waypoint[1]:
+                    angulo_velocidad = angulo_velocidad - robot_offset_angle
+                else:
+                    angulo_velocidad = angulo_velocidad + robot_offset_angle
+
+                print("angulo final (degree):", math.degrees(angulo_velocidad))
 
                 vx = np.linalg.norm(self.robot_current_vel) * math.cos(angulo_velocidad)
 
-                w = np.linalg.norm(self.robot_current_vel) * math.sin(angulo_velocidad)
+                # w = np.linalg.norm(self.robot_current_vel) * math.sin(angulo_velocidad)
+
+                w = self.pid_rotation(angulo_velocidad)
 
                 cmd_vel_msg = Twist()
                 cmd_vel_msg.linear.x = vx
-                cmd_vel_msg.angular.z = -w
+                cmd_vel_msg.angular.z = w
 
                 self.velocity_pub.publish(cmd_vel_msg)
 
                 print("v lineal:", vx)
-                print("w:", -w)
+                print("w:", w)
                 print("#####")
 
             self.rate.sleep()
