@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from numpy.core.defchararray import multiply
 import rospy
 
 from pedsim_msgs.msg import AgentStates, AgentGroups
@@ -11,16 +10,34 @@ from tf import TransformListener
 import tf
 import numpy as np
 import math
-
+import actionlib
+from sfm_diff_robot.msg import (
+    SFMDriveFeedback,
+    SFMDriveResult,
+    SFMDriveAction,
+)
+from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from simple_pid import PID
+from actionlib_msgs.msg import GoalID
 
 
-class SocialForceModelDrive:
+class SocialForceModelDriveAction(object):
+
+    _feedback = SFMDriveFeedback()
+    _result = SFMDriveResult()
+
     def __init__(self):
-        rospy.init_node("sfm_force_computer_publisher")
 
         # base variables
         self.goal_set = False
+
+        self.xy_tolerance = 1
+
+        self._action_name = "sfm_drive_node"
+
+        self.move_base_client = actionlib.SimpleActionClient(
+            "move_base", MoveBaseAction
+        )
 
         self.agents_states_register = []
         self.agents_groups_register = []
@@ -32,7 +49,6 @@ class SocialForceModelDrive:
         self.relaxation_time = 0.5
         self.laser_ranges = np.zeros(360)
 
-        self.rate = rospy.Rate(25)
         self.agent_radius = 1
         self.force_sigma_obstacle = 0.8
 
@@ -51,8 +67,16 @@ class SocialForceModelDrive:
         self.tf = TransformListener()
 
         # PID for rotation
-        self.pid_rotation = PID(0.25, 0.001, 0.0001, setpoint=0)
+        self.pid_rotation = PID(0.20, 0.1, 0.0001, setpoint=0)
         self.pid_rotation.output_limits = (-0.75, 0.75)
+
+        self._as = actionlib.SimpleActionServer(
+            self._action_name,
+            SFMDriveAction,
+            execute_cb=self.execute_cb,
+            auto_start=False,
+        )
+        self._as.start()
 
         #! subscribers
         self.agents_states_subs = rospy.Subscriber(
@@ -72,10 +96,6 @@ class SocialForceModelDrive:
             self.robot_pos_callback,
         )
 
-        self.current_waypoint_subs = rospy.Subscriber(
-            "/pedsim_robot/waypoint", Point, self.waypoint_callback
-        )
-
         self.laser_scan_subs = rospy.Subscriber(
             "/scan_filtered", LaserScan, self.laser_scan_callback
         )
@@ -83,7 +103,109 @@ class SocialForceModelDrive:
         #! publishers
         self.velocity_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=10)
 
+    def check_goal_reached(self):
+        if (
+            abs(
+                np.linalg.norm(
+                    np.array(
+                        [self.current_waypoint[0], self.current_waypoint[1]],
+                        np.dtype("float64"),
+                    )
+                    - np.array(
+                        [self.robot_position[0], self.robot_position[1]],
+                        np.dtype("float64"),
+                    )
+                )
+            )
+            <= 0.5
+        ):
+            return True
+        return False
+
     # * callbacks
+
+    def execute_cb(self, goal):
+        rospy.loginfo("Starting social drive")
+        r_sleep = rospy.Rate(30)
+        cancel_move_pub = rospy.Publisher("/move_base/cancel", GoalID, queue_size=1)
+        cancel_msg = GoalID()
+        cancel_move_pub.publish(cancel_msg)
+
+        self.goal_set = True
+        self.current_waypoint = np.array(
+            [goal.goal.x, goal.goal.y, goal.goal.z], np.dtype("float64")
+        )
+
+        while not self.check_goal_reached():
+            complete_force = (
+                self.force_factor_desired * self.desired_force()
+                + self.force_factor_obstacle * self.obstacle_force()
+                + self.force_factor_social * self.social_force()
+            )
+
+            print("complete force:", complete_force)
+
+            self.robot_current_vel = self.robot_current_vel + (complete_force / 25)
+            print("robot current vel:", self.robot_current_vel)
+
+            speed = np.linalg.norm(self.robot_current_vel)
+
+            if speed > self.robot_max_vel:
+                self.robot_current_vel = (
+                    self.robot_current_vel
+                    / np.linalg.norm(self.robot_current_vel)
+                    * self.robot_max_vel
+                )
+
+            t = self.tf.getLatestCommonTime("/base_footprint", "/odom")
+            position, quaternion = self.tf.lookupTransform(
+                "/base_footprint", "/odom", t
+            )
+            robot_offset_angle = tf.transformations.euler_from_quaternion(quaternion)[2]
+
+            print("offset_angle:", math.degrees(robot_offset_angle))
+
+            angulo_velocidad = angle(
+                self.robot_current_vel, np.array([1, 0, 0], np.dtype("float64"))
+            )
+
+            print("angulo_velocidad:", math.degrees(angulo_velocidad))
+
+            if self.robot_position[1] > self.current_waypoint[1]:
+                angulo_velocidad = angulo_velocidad - robot_offset_angle
+            else:
+                angulo_velocidad = angulo_velocidad + robot_offset_angle
+
+            print("angulo final (degree):", math.degrees(angulo_velocidad))
+
+            vx = np.linalg.norm(self.robot_current_vel) * math.cos(angulo_velocidad)
+
+            # w = np.linalg.norm(self.robot_current_vel) * math.sin(angulo_velocidad)
+
+            w = self.pid_rotation(angulo_velocidad)
+
+            cmd_vel_msg = Twist()
+            cmd_vel_msg.linear.x = vx
+            cmd_vel_msg.angular.z = w
+
+            self.velocity_pub.publish(cmd_vel_msg)
+
+            print("v lineal:", vx)
+            print("w:", w)
+            print("#####")
+            self._feedback.feedback = "robot moving"
+            rospy.loginfo("robot_ moving")
+            self._as.publish_feedback(self._feedback)
+            r_sleep.sleep()
+        cmd_vel_msg = Twist()
+        cmd_vel_msg.linear.x = 0
+        cmd_vel_msg.angular.z = 0
+
+        self.velocity_pub.publish(cmd_vel_msg)
+        self._result = "waypoint reached"
+        rospy.loginfo("waypoint reached")
+        self._as.set_succeeded(self._result)
+
     """
     call back para agarrar los datos del laser
     """
@@ -114,14 +236,6 @@ class SocialForceModelDrive:
 
     def agents_groups_callback(self, data):
         self.agents_groups_register = data
-
-    """
-    callback para obtener posicion del waypoint
-    """
-
-    def waypoint_callback(self, data):
-        self.goal_set = True
-        self.current_waypoint = np.array([data.x, data.y, data.z], np.dtype("float64"))
 
         # * force functions
         """
@@ -315,6 +429,9 @@ class SocialForceModelDrive:
 
                 print("angulo final (degree):", math.degrees(angulo_velocidad))
 
+                if angulo_velocidad > 180:
+                    angulo_velocidad = -180 + (angulo_velocidad - 180)
+
                 vx = np.linalg.norm(self.robot_current_vel) * math.cos(angulo_velocidad)
 
                 # w = np.linalg.norm(self.robot_current_vel) * math.sin(angulo_velocidad)
@@ -330,8 +447,6 @@ class SocialForceModelDrive:
                 print("v lineal:", vx)
                 print("w:", w)
                 print("#####")
-
-            self.rate.sleep()
 
 
 """
@@ -375,5 +490,6 @@ def angle(v1, v2):
 
 
 if __name__ == "__main__":
-    forces_computer = SocialForceModelDrive()
-    forces_computer.run()
+    rospy.init_node("sfm_drive\_node")
+    server = SocialForceModelDriveAction()
+    rospy.spin()

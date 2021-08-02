@@ -1,0 +1,8 @@
+#goal
+geometry_msgs/Point goal
+---
+#result
+string result
+---
+#feedback
+string feedback
