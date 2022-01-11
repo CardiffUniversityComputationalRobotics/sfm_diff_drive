@@ -11,7 +11,7 @@ import tf
 import numpy as np
 import math
 import actionlib
-from sfm_diff_robot.msg import (
+from sfm_diff_drive.msg import (
     SFMDriveFeedback,
     SFMDriveResult,
     SFMDriveAction,
