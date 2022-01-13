@@ -1,0 +1,5 @@
+<launch>
+
+    <node pkg="sfm_diff_drive" type="sfm_drive_exp_server.py" output="screen" name="sfm_drive_node" />
+
+</launch>
