@@ -8,7 +8,7 @@ import math
 import tf
 
 
-class RMIMeasure:
+class RMIMetricsPublisher:
     def __init__(self):
 
         self.agents_list = []
@@ -136,3 +136,9 @@ def calculate_rmi(robot_odometry: Odometry, agents_list: List[AgentState]):
             last_rmi = current_rmi
 
     return last_rmi
+
+
+if __name__ == "__main__":
+    rospy.init_node("sii_metrics_node")
+    rmi_publisher_node = RMIMetricsPublisher()
+    rmi_publisher_node.main()
