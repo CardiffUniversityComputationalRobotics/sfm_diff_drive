@@ -67,7 +67,7 @@ class SocialForceModelDriveAction(object):
         self.tf = TransformListener()
 
         # PID for rotation
-        self.pid_rotation = PID(0.20, 0.1, 0.0001, setpoint=0)
+        self.pid_rotation = PID(0.25, 0.1, 0.0001, setpoint=0)
         self.pid_rotation.output_limits = (-0.75, 0.75)
 
         self._as = actionlib.SimpleActionServer(
@@ -186,7 +186,7 @@ class SocialForceModelDriveAction(object):
 
             cmd_vel_msg = Twist()
             cmd_vel_msg.linear.x = vx
-            cmd_vel_msg.angular.z = w
+            cmd_vel_msg.angular.z = -w
 
             self.velocity_pub.publish(cmd_vel_msg)
 
@@ -490,6 +490,6 @@ def angle(v1, v2):
 
 
 if __name__ == "__main__":
-    rospy.init_node("sfm_drive\_node")
+    rospy.init_node("sfm_drive_node")
     server = SocialForceModelDriveAction()
     rospy.spin()
