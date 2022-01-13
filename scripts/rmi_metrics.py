@@ -1,8 +1,11 @@
+from typing import List
 import rospy
 from pedsim_msgs.msg import AgentStates, AgentState
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Float32
 import numpy as np
+import math
+import tf
 
 
 class RMIMeasure:
@@ -47,11 +50,13 @@ class RMIMeasure:
     def main(self):
         while not rospy.on_shutdown:
             actual_rmi_value = calculate_rmi(self.robot_odom, self.agents_list)
-            self.rmi_pub.publish(actual_rmi_value)
+            msg = Float32()
+            msg.data = actual_rmi_value
+            self.rmi_pub.publish(msg)
             self.rate.sleep()
 
 
-def calculate_rmi(robot_odometry, agents_list):
+def calculate_rmi(robot_odometry: Odometry, agents_list: List[AgentState]):
     last_rmi = 0
 
     rmi_value = lambda v_r, beta, v_a, alpha, x_agent, y_agent, x_robot, y_robot: (
@@ -65,11 +70,56 @@ def calculate_rmi(robot_odometry, agents_list):
 
     for agent in agents_list:
 
-        beta = 1  # angulo de la orientacion del robot a la posicion del agente
+        beta = math.atan2(
+            agent.pose.position.y - robot_odometry.pose.pose.position.y,
+            agent.pose.position.x - robot_odometry.pose.pose.position.x,
+        )
+
+        # beta = np.arctan2((state_r2->values[1] - agentState.pose.position.y),
+        #                            (state_r2->values[0] - agentState.pose.position.x)))
+
+        quaternion = (
+            robot_odometry.pose.orientation.x,
+            robot_odometry.pose.orientation.y,
+            robot_odometry.pose.orientation.z,
+            robot_odometry.pose.orientation.w,
+        )
+        euler = tf.transformations.euler_from_quaternion(quaternion)
+        yaw = euler[2]
+
+        robot_angle = math.pi / 2 + yaw
+
+        beta = abs(robot_angle - beta)
+
+        # if robot_angle > beta:
+        #     robot_angle - beta
+        # elif robot_angle < beta:
+        #     beta - robot_angle
+        # else:
+        #     beta = 0
 
         v_a = np.sqrt(np.pow(agent.twist.linear.x, 2) + np.pow(agent.twist.linear.y, 2))
 
-        alpha = 1
+        alpha = math.atan2(
+            robot_odometry.pose.pose.position.y - agent.pose.position.y,
+            robot_odometry.pose.pose.position.x - agent.pose.position.x,
+        )
+
+        # beta = np.arctan2((state_r2->values[1] - agentState.pose.position.y),
+        #                            (state_r2->values[0] - agentState.pose.position.x)))
+
+        quaternion = (
+            agent.pose.orientation.x,
+            agent.pose.orientation.y,
+            agent.pose.orientation.z,
+            agent.pose.orientation.w,
+        )
+        euler = tf.transformations.euler_from_quaternion(quaternion)
+        yaw = euler[2]
+
+        agent_angle = math.pi / 2 + yaw
+
+        alpha = abs(agent_angle - alpha)
 
         current_rmi = rmi_value(
             v_r,
