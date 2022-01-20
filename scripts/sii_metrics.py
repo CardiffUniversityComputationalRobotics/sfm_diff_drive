@@ -31,6 +31,10 @@ class SIIMetricsPublisher(object):
         self.sii_value_msg = Float64()
         self.sii_value_msg.data = 0
 
+        """d_c: is the desirable value of the distance between the robot and the 
+        agents, can be around 0.45m and 1.2m according to Hall depending on the
+        culture
+        """
         self.d_c = 0.9
         self.sigma_p = self.d_c / 2
         self.final_sigma = math.sqrt(2) * self.sigma_p
@@ -52,22 +56,25 @@ class SIIMetricsPublisher(object):
         while not rospy.is_shutdown():
             self.sii_value_msg.data = 0
 
-            sii_value = math.pow(
-                math.e,
-                -(
-                    math.pow(
-                        (self.robot_position[0] - (0.00087)) / (self.final_sigma),
-                        2,
-                    )
-                    + math.pow(
-                        (self.robot_position[1] - (-0.49538)) / (self.final_sigma),
-                        2,
-                    )
-                ),
-            )
+            for agent in self.agents_states_register:
+                sii_value = math.pow(
+                    math.e,
+                    -(
+                        math.pow(
+                            (self.robot_position[0] - agent.pose.position.x)
+                            / (self.final_sigma),
+                            2,
+                        )
+                        + math.pow(
+                            (self.robot_position[1] - agent.pose.position.y)
+                            / (self.final_sigma),
+                            2,
+                        )
+                    ),
+                )
 
-            # if sii_value > self.sii_value_msg.data:
-            self.sii_value_msg.data = sii_value
+            if sii_value > self.sii_value_msg.data:
+                self.sii_value_msg.data = sii_value
             self.sii_metric_pub.publish(self.sii_value_msg)
             self.rate.sleep()
 
