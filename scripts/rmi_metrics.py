@@ -48,7 +48,7 @@ class RMIMetricsPublisher:
         self.agents_list = data.agent_states
 
     def main(self):
-        while not rospy.on_shutdown:
+        while not rospy.is_shutdown():
             actual_rmi_value = calculate_rmi(self.robot_odom, self.agents_list)
             msg = Float32()
             msg.data = actual_rmi_value
@@ -70,6 +70,7 @@ def calculate_rmi(robot_odometry: Odometry, agents_list: List[AgentState]):
 
     for agent in agents_list:
 
+        # angle between robot orientation and vector robot-agent
         beta = math.atan2(
             agent.pose.position.y - robot_odometry.pose.pose.position.y,
             agent.pose.position.x - robot_odometry.pose.pose.position.x,
@@ -77,6 +78,9 @@ def calculate_rmi(robot_odometry: Odometry, agents_list: List[AgentState]):
 
         # beta = np.arctan2((state_r2->values[1] - agentState.pose.position.y),
         #                            (state_r2->values[0] - agentState.pose.position.x)))
+
+        if beta < 0:
+            beta = 2 * math.pi + beta
 
         quaternion = (
             robot_odometry.pose.orientation.x,
@@ -87,9 +91,19 @@ def calculate_rmi(robot_odometry: Odometry, agents_list: List[AgentState]):
         euler = tf.transformations.euler_from_quaternion(quaternion)
         yaw = euler[2]
 
-        robot_angle = math.pi / 2 + yaw
+        # robot_angle = math.pi / 2 + yaw
 
-        beta = abs(robot_angle - beta)
+        if yaw < 0:
+            yaw = 2 * math.pi + yaw
+
+        if beta > (yaw + math.pi):
+            beta = abs(yaw + 2 * math.pi - beta)
+        elif yaw > (beta + math.pi):
+            beta = abs(beta + 2 * math.pi - yaw)
+        else:
+            beta = abs(beta - yaw)
+
+        # beta = abs(robot_angle - beta)
 
         # if robot_angle > beta:
         #     robot_angle - beta
@@ -105,6 +119,9 @@ def calculate_rmi(robot_odometry: Odometry, agents_list: List[AgentState]):
             robot_odometry.pose.pose.position.x - agent.pose.position.x,
         )
 
+        if alpha < 0:
+            alpha = 2 * math.pi + alpha
+
         # beta = np.arctan2((state_r2->values[1] - agentState.pose.position.y),
         #                            (state_r2->values[0] - agentState.pose.position.x)))
 
@@ -117,9 +134,19 @@ def calculate_rmi(robot_odometry: Odometry, agents_list: List[AgentState]):
         euler = tf.transformations.euler_from_quaternion(quaternion)
         yaw = euler[2]
 
-        agent_angle = math.pi / 2 + yaw
+        if yaw < 0:
+            yaw = 2 * math.pi + yaw
 
-        alpha = abs(agent_angle - alpha)
+        if alpha > (yaw + math.pi):
+            alpha = abs(yaw + 2 * math.pi - alpha)
+        elif yaw > (alpha + math.pi):
+            alpha = abs(alpha + 2 * math.pi - yaw)
+        else:
+            alpha = abs(alpha - yaw)
+
+        # agent_angle = math.pi / 2 + yaw
+
+        # alpha = abs(agent_angle - alpha)
 
         current_rmi = rmi_value(
             v_r,
