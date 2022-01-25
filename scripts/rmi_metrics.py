@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from typing import List
 import rospy
 from pedsim_msgs.msg import AgentStates, AgentState
@@ -56,19 +58,19 @@ class RMIMetricsPublisher:
             self.rate.sleep()
 
 
-def calculate_rmi(robot_odometry: Odometry, agents_list: List[AgentState]):
+def calculate_rmi(robot_odometry, agents_list):
     last_rmi = 0
 
     rmi_value = lambda v_r, beta, v_a, alpha, x_agent, y_agent, x_robot, y_robot: (
         2 + v_r * np.cos(beta) + v_a * np.cos(alpha)
-    ) / (np.sqrt(np.pow(x_agent - x_robot, 2) + np.pow(y_agent - y_robot, 2)))
-
-    v_r = np.sqrt(
-        np.pow(robot_odometry.twist.twist.linear.x, 2)
-        + np.pow(robot_odometry.twist.twist.linear.y, 2)
-    )
+    ) / (np.sqrt(math.pow(x_agent - x_robot, 2) + math.pow(y_agent - y_robot, 2)))
 
     for agent in agents_list:
+
+        v_r = np.sqrt(
+            math.pow(robot_odometry.twist.twist.linear.x, 2)
+            + math.pow(robot_odometry.twist.twist.linear.y, 2)
+        )
 
         # angle between robot orientation and vector robot-agent
         beta = math.atan2(
@@ -83,10 +85,10 @@ def calculate_rmi(robot_odometry: Odometry, agents_list: List[AgentState]):
             beta = 2 * math.pi + beta
 
         quaternion = (
-            robot_odometry.pose.orientation.x,
-            robot_odometry.pose.orientation.y,
-            robot_odometry.pose.orientation.z,
-            robot_odometry.pose.orientation.w,
+            robot_odometry.pose.pose.orientation.x,
+            robot_odometry.pose.pose.orientation.y,
+            robot_odometry.pose.pose.orientation.z,
+            robot_odometry.pose.pose.orientation.w,
         )
         euler = tf.transformations.euler_from_quaternion(quaternion)
         yaw = euler[2]
@@ -112,7 +114,9 @@ def calculate_rmi(robot_odometry: Odometry, agents_list: List[AgentState]):
         # else:
         #     beta = 0
 
-        v_a = np.sqrt(np.pow(agent.twist.linear.x, 2) + np.pow(agent.twist.linear.y, 2))
+        v_a = np.sqrt(
+            math.pow(agent.twist.linear.x, 2) + math.pow(agent.twist.linear.y, 2)
+        )
 
         alpha = math.atan2(
             robot_odometry.pose.pose.position.y - agent.pose.position.y,
@@ -166,6 +170,6 @@ def calculate_rmi(robot_odometry: Odometry, agents_list: List[AgentState]):
 
 
 if __name__ == "__main__":
-    rospy.init_node("sii_metrics_node")
+    rospy.init_node("rmi_metrics_node")
     rmi_publisher_node = RMIMetricsPublisher()
     rmi_publisher_node.main()

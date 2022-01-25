@@ -35,7 +35,7 @@ class SIIMetricsPublisher(object):
         agents, can be around 0.45m and 1.2m according to Hall depending on the
         culture
         """
-        self.d_c = 0.9
+        self.d_c = 1.2
         self.sigma_p = self.d_c / 2
         self.final_sigma = math.sqrt(2) * self.sigma_p
 
@@ -55,6 +55,7 @@ class SIIMetricsPublisher(object):
     def run(self):
         while not rospy.is_shutdown():
             self.sii_value_msg.data = 0
+            sii_value = 0
 
             for agent in self.agents_states_register:
                 sii_value = math.pow(
@@ -72,9 +73,15 @@ class SIIMetricsPublisher(object):
                         )
                     ),
                 )
-
-            if sii_value > self.sii_value_msg.data:
-                self.sii_value_msg.data = sii_value
+                # print(self.robot_position[0] - agent.pose.position.x)
+                # print(self.robot_position[1] - agent.pose.position.y)
+                # print("agentid: ", agent.id)
+                # print("sii value:", sii_value)
+                if sii_value > self.sii_value_msg.data:
+                    # print("last value: ", self.sii_value_msg.data)
+                    self.sii_value_msg.data = sii_value
+            # print("max value:", self.sii_value_msg.data)
+            # print("#############")
             self.sii_metric_pub.publish(self.sii_value_msg)
             self.rate.sleep()
 
