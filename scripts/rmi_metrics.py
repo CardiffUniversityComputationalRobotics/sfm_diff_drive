@@ -24,7 +24,7 @@ class RMIMetricsPublisher:
         )
 
         self.robot_pos_subs = rospy.Subscriber(
-            "/pedsim_simulator/robot_position",
+            "/pepper/odom_groundtruth",
             Odometry,
             self.robot_pos_callback,
         )
