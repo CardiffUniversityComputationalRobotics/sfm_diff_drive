@@ -66,10 +66,11 @@ class SocialForceModelDriveAction(object):
 
         # constants for forces and other parameters
         self.force_factor_desired = rospy.get_param("~force_desired", 4.2)
-        self.force_factor_social = rospy.get_param("force_social", 3.64)
-        self.force_factor_obstacle = rospy.get_param("force_obstacle", 35)
-        self.robot_max_vel = rospy.get_param("max_vel", 0.4)
-        self.robot_max_turn_vel = rospy.get_param("max_vel_turn", 0.4)
+        self.force_factor_social = rospy.get_param("~force_social", 3.64)
+        self.force_factor_obstacle = rospy.get_param("~force_obstacle", 35)
+        self.robot_max_vel = rospy.get_param("~max_vel", 0.4)
+        self.robot_max_turn_vel = rospy.get_param("~max_vel_turn", 0.4)
+        self.cmd_vel_topic = rospy.get_param("~cmd_vel_topic", "/cmd_vel")
 
         self.tf = TransformListener()
 
@@ -114,7 +115,7 @@ class SocialForceModelDriveAction(object):
         )
 
         #! publishers
-        self.velocity_pub = rospy.Publisher("/pepper/cmd_vel", Twist, queue_size=10)
+        self.velocity_pub = rospy.Publisher(self.cmd_vel_topic, Twist, queue_size=10)
 
         while len(self.walls_range) < 1:
             self.walls_range = rospy.wait_for_message(
@@ -136,7 +137,7 @@ class SocialForceModelDriveAction(object):
                     )
                 )
             )
-            <= 0.5
+            <= 0.3
         ):
             return True
         return False
@@ -156,24 +157,34 @@ class SocialForceModelDriveAction(object):
         )
 
         while not self.check_goal_reached():
-            # complete_force = (
-            #     self.force_factor_desired * self.desired_force()
-            #     + self.force_factor_obstacle * self.obstacle_force()
-            #     + self.force_factor_social * self.social_force()
-            # )
 
-            complete_force = (
-                self.force_factor_social * self.desired_force()
-                + self.force_factor_social * self.social_force()
-                + self.force_factor_obstacle * self.obstacle_force()
+            obstacle_complete_force = self.obstacle_force_walls()
+
+            # print(obstacle_complete_force)
+
+            obstacle_complete_force = (
+                obstacle_complete_force * self.force_factor_obstacle
             )
 
-            # print("complete force:", complete_force)
+            print("obstacle force: ", obstacle_complete_force)
+
+            social_complete_force = self.force_factor_social * self.social_force()
+
+            print("social force: ", social_complete_force)
+
+            desired_complete_force = self.force_factor_desired * self.desired_force()
+
+            print("desired force: ", desired_complete_force)
+
+            complete_force = (
+                desired_complete_force + social_complete_force + obstacle_complete_force
+            )
+
+            print("complete force:", complete_force)
 
             time.sleep(1)
 
             self.robot_current_vel = self.robot_current_vel + (complete_force / 25)
-            print("robot current vel:", self.robot_current_vel)
 
             speed = np.linalg.norm(self.robot_current_vel)
 
@@ -199,18 +210,57 @@ class SocialForceModelDriveAction(object):
             if robot_offset_angle < 0:
                 robot_offset_angle = 2 * math.pi + robot_offset_angle
 
-            print("offset_angle:", math.degrees(robot_offset_angle))
+            # print("robot current vel:", self.robot_current_vel)
+
+            # print("offset_angle robot:", math.degrees(robot_offset_angle))
+
+            # angulo_velocidad = angle(
+            #     np.array(
+            #         [self.robot_current_vel[0], self.robot_current_vel[1]],
+            #         np.dtype("float64"),
+            #     ),
+            #     np.array([1, 0], np.dtype("float64")),
+            # )
 
             angulo_velocidad = math.atan2(
-                self.robot_current_vel[1], self.robot_current_vel[0] - 1
+                self.robot_current_vel[0], self.robot_current_vel[1]
             )
 
-            print("offset_angle:", math.degrees(angulo_velocidad))
+            # print("raw angle: ", math.degrees(angulo_velocidad))
 
-            if angulo_velocidad < 0:
-                angulo_velocidad = 2 * math.pi + angulo_velocidad
+            # if angulo_velocidad > 0:
+            #     angulo_velocidad = 2 * math.pi - angulo_velocidad - (math.pi / 2)
+            # if angulo_velocidad < 0:
+            #     angulo_velocidad = -angulo_velocidad + (math.pi / 2)
 
-            yaw_error = robot_offset_angle - angulo_velocidad
+            if angulo_velocidad > 0 and angulo_velocidad < (math.pi / 2):
+                angulo_velocidad = (math.pi / 2) - angulo_velocidad
+            elif angulo_velocidad > (math.pi / 2):
+                angulo_velocidad = (2 * math.pi) - angulo_velocidad + (math.pi / 2)
+            elif angulo_velocidad < 0:
+                angulo_velocidad = (math.pi / 2) - angulo_velocidad
+            elif angulo_velocidad == 0:
+                angulo_velocidad = math.pi / 2
+            elif abs(angulo_velocidad) == (math.pi / 2):
+                angulo_velocidad = math.pi * 3 / 2
+
+            # print("angulo velocidad:", math.degrees(angulo_velocidad))
+
+            if robot_offset_angle > (angulo_velocidad + math.pi):
+                yaw_error = angulo_velocidad + 2 * math.pi - robot_offset_angle
+            elif angulo_velocidad > (robot_offset_angle + math.pi):
+                yaw_error = robot_offset_angle + 2 * math.pi - angulo_velocidad
+            else:
+                yaw_error = robot_offset_angle - angulo_velocidad
+
+            yaw_error = -robot_offset_angle + angulo_velocidad
+
+            if yaw_error < -math.pi:
+                yaw_error = 2 * math.pi + yaw_error
+            elif yaw_error > math.pi:
+                yaw_error = -2 * math.pi + yaw_error
+
+            # print("angle error:", math.degrees(yaw_error))
 
             if abs(yaw_error) < 0.2:
                 w = 0
@@ -223,15 +273,10 @@ class SocialForceModelDriveAction(object):
                 elif w < 0:
                     w = -self.robot_max_turn_vel
 
-            if abs(yaw_error) > 1.5:
+            if abs(yaw_error) > 1.3:
                 vx = 0
             else:
                 vx = np.linalg.norm(self.robot_current_vel) * math.cos(yaw_error)
-
-            # w = np.linalg.norm(self.robot_current_vel) * math.sin(angulo_velocidad)
-
-            # w = self.pid_rotation(angulo_velocidad)
-            w = -w
 
             cmd_vel_msg = Twist()
             cmd_vel_msg.linear.x = vx
