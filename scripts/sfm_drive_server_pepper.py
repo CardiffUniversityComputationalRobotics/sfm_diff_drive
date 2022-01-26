@@ -158,23 +158,19 @@ class SocialForceModelDriveAction(object):
 
         while not self.check_goal_reached():
 
-            obstacle_complete_force = self.obstacle_force_walls()
-
-            # print(obstacle_complete_force)
-
             obstacle_complete_force = (
-                obstacle_complete_force * self.force_factor_obstacle
+                self.force_factor_obstacle * self.obstacle_force_walls()
             )
 
-            print("obstacle force: ", obstacle_complete_force)
+            # print("obstacle force: ", obstacle_complete_force)
 
             social_complete_force = self.force_factor_social * self.social_force()
 
-            print("social force: ", social_complete_force)
+            # print("social force: ", social_complete_force)
 
             desired_complete_force = self.force_factor_desired * self.desired_force()
 
-            print("desired force: ", desired_complete_force)
+            # print("desired force: ", desired_complete_force)
 
             complete_force = (
                 desired_complete_force + social_complete_force + obstacle_complete_force
@@ -214,24 +210,11 @@ class SocialForceModelDriveAction(object):
 
             # print("offset_angle robot:", math.degrees(robot_offset_angle))
 
-            # angulo_velocidad = angle(
-            #     np.array(
-            #         [self.robot_current_vel[0], self.robot_current_vel[1]],
-            #         np.dtype("float64"),
-            #     ),
-            #     np.array([1, 0], np.dtype("float64")),
-            # )
-
             angulo_velocidad = math.atan2(
                 self.robot_current_vel[0], self.robot_current_vel[1]
             )
 
             # print("raw angle: ", math.degrees(angulo_velocidad))
-
-            # if angulo_velocidad > 0:
-            #     angulo_velocidad = 2 * math.pi - angulo_velocidad - (math.pi / 2)
-            # if angulo_velocidad < 0:
-            #     angulo_velocidad = -angulo_velocidad + (math.pi / 2)
 
             if angulo_velocidad > 0 and angulo_velocidad < (math.pi / 2):
                 angulo_velocidad = (math.pi / 2) - angulo_velocidad
@@ -296,7 +279,7 @@ class SocialForceModelDriveAction(object):
         cmd_vel_msg.angular.z = 0
 
         self.velocity_pub.publish(cmd_vel_msg)
-        self._result = "waypoint reached"
+        self._result.result = "waypoint reached"
         rospy.loginfo("waypoint reached")
         self._as.set_succeeded(self._result)
 
@@ -388,6 +371,8 @@ class SocialForceModelDriveAction(object):
             np.dtype("float64"),
         )
 
+        laser_pos = self.robot_position - laser_pos
+
         laser_vec_norm = np.linalg.norm(laser_pos)
         if laser_vec_norm != 0:
             norm_laser_direction = laser_pos / laser_vec_norm
@@ -396,7 +381,7 @@ class SocialForceModelDriveAction(object):
 
         distance = diff_robot_laser[min_index] - self.agent_radius
         force_amount = math.exp(-distance / self.force_sigma_obstacle)
-        final_rep_force = -force_amount * norm_laser_direction
+        final_rep_force = force_amount * norm_laser_direction
         # print("Obstacle force:", final_rep_force)
         return final_rep_force
         # else:
@@ -498,7 +483,11 @@ class SocialForceModelDriveAction(object):
 
             interaction_direction = interaction_vector / interaction_length
 
-            theta = angle(interaction_direction, diff_direction)
+            # theta = angle(interaction_direction, diff_direction)
+
+            theta = math.atan2(diff_direction[1], diff_direction[0]) - math.atan2(
+                interaction_direction[1], interaction_direction[0]
+            )
 
             B = self.gamma * interaction_length
 
