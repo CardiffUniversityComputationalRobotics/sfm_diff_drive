@@ -88,7 +88,7 @@ class SocialForceModelDriveAction(object):
 
         #! subscribers
         self.agents_states_subs = rospy.Subscriber(
-            "/pedsim_simulator/simulated_agents",
+            "/pedsim_simulator/simulated_agents_overwritten",
             AgentStates,
             self.agents_state_callback,
         )
@@ -271,7 +271,7 @@ class SocialForceModelDriveAction(object):
             print("w:", w)
             # print("#####")
             self._feedback.feedback = "robot moving"
-            rospy.loginfo("robot_ moving")
+            rospy.loginfo("robot_moving")
             self._as.publish_feedback(self._feedback)
             r_sleep.sleep()
         cmd_vel_msg = Twist()

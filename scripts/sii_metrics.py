@@ -14,7 +14,7 @@ class SIIMetricsPublisher(object):
         # subscribers
 
         self.agents_states_subs = rospy.Subscriber(
-            "/pedsim_simulator/simulated_agents",
+            "/pedsim_simulator/simulated_agents_overwritten",
             AgentStates,
             self.agents_state_callback,
         )
