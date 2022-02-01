@@ -8,7 +8,7 @@ import numpy as np
 import math
 
 
-class SIIMetricsPublisher(object):
+class SIIMetricsPublisher:
     def __init__(self):
 
         # subscribers
@@ -26,7 +26,7 @@ class SIIMetricsPublisher(object):
         )
 
         # publishers
-        self.sii_metric_pub = rospy.Publisher("/sii_value", Float64, queue_size=10)
+        self.sii_metric_pub = rospy.Publisher("/sii", Float64, queue_size=10)
 
         self.sii_value_msg = Float64()
         self.sii_value_msg.data = 0

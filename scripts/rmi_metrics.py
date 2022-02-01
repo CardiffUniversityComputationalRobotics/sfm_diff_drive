@@ -4,7 +4,7 @@ from typing import List
 import rospy
 from pedsim_msgs.msg import AgentStates, AgentState
 from nav_msgs.msg import Odometry
-from std_msgs.msg import Float32
+from std_msgs.msg import Float64
 import numpy as np
 import math
 import tf
@@ -14,7 +14,7 @@ class RMIMetricsPublisher:
     def __init__(self):
 
         self.agents_list = []
-        self.robot_odom = None
+        self.robot_odom = Odometry()
 
         #! subscribers
         self.agents_states_subs = rospy.Subscriber(
@@ -31,7 +31,7 @@ class RMIMetricsPublisher:
 
         #! publishers
 
-        self.rmi_pub = rospy.Publisher("/rmi", Float32, queue_size=10)
+        self.rmi_pub = rospy.Publisher("/rmi", Float64, queue_size=10)
 
         self.rate = rospy.Rate(10)
 
@@ -52,7 +52,7 @@ class RMIMetricsPublisher:
     def main(self):
         while not rospy.is_shutdown():
             actual_rmi_value = calculate_rmi(self.robot_odom, self.agents_list)
-            msg = Float32()
+            msg = Float64()
             msg.data = actual_rmi_value
             self.rmi_pub.publish(msg)
             self.rate.sleep()

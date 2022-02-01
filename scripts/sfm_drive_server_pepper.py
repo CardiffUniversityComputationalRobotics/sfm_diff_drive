@@ -178,7 +178,7 @@ class SocialForceModelDriveAction(object):
 
             print("complete force:", complete_force)
 
-            time.sleep(1)
+            # time.sleep(1)
 
             self.robot_current_vel = self.robot_current_vel + (complete_force / 25)
 
