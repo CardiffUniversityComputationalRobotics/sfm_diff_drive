@@ -20,7 +20,8 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from simple_pid import PID
 from actionlib_msgs.msg import GoalID
 from visualization_msgs.msg import Marker
-import time
+from nav_msgs.msg import OccupancyGrid
+from occupancy_grid_python import OccupancyGridManager
 
 
 class SocialForceModelDriveAction(object):
@@ -53,6 +54,9 @@ class SocialForceModelDriveAction(object):
         self.laser_ranges = np.zeros(360)
 
         self.walls_range = []
+
+        # nearest obstacle
+        self.nearest_obstacle = (0, 0)
 
         self.agent_radius = 1
         self.force_sigma_obstacle = 0.8
@@ -109,19 +113,20 @@ class SocialForceModelDriveAction(object):
             "/scan_filtered", LaserScan, self.laser_scan_callback
         )
 
-        self.obstacles_subs = rospy.Subscriber(
-            "/pedsim_simulator/simulated_walls",
-            LineObstacles,
-        )
+        # self.obstacles_subs = rospy.Subscriber(
+        #     "/projected_map", OccupancyGrid, self.obstacle_map_callback
+        # )
+
+        self.ogm = OccupancyGridManager("/projected_map", subscribe_to_updates=True)
 
         #! publishers
         self.velocity_pub = rospy.Publisher(self.cmd_vel_topic, Twist, queue_size=10)
 
-        while len(self.walls_range) < 1:
-            self.walls_range = rospy.wait_for_message(
-                "/pedsim_visualizer/walls", Marker
-            )
-            self.walls_range = self.walls_range.points
+        # while len(self.walls_range) < 1:
+        #     self.walls_range = rospy.wait_for_message(
+        #         "/pedsim_visualizer/walls", Marker
+        #     )
+        #     self.walls_range = self.walls_range.points
 
     def check_goal_reached(self):
         if (
@@ -283,18 +288,34 @@ class SocialForceModelDriveAction(object):
         rospy.loginfo("waypoint reached")
         self._as.set_succeeded(self._result)
 
-    """
-    call back para agarrar los datos del laser
-    """
+    def obstacle_map_processing(self):
+
+        x, y, cost = self.ogm.get_closest_cell_over_cost(
+            x=self.robot_position[0],
+            y=self.robot_position[1],
+            cost_threshold=100,
+            max_radius=10,
+        )
+
+        self.nearest_obstacle = np.array(
+            [
+                x,
+                y,
+                0,
+            ],
+            np.dtype("float64"),
+        )
 
     def laser_scan_callback(self, data):
+        """
+        callback para agarrar los datos del laser
+        """
         self.laser_ranges = data.ranges
 
-    """
-    callback para agarrar datos de posicion del robot
-    """
-
     def robot_pos_callback(self, data):
+        """
+        callback para agarrar datos de posicion del robot
+        """
         data_position = data.pose.pose.position
         self.robot_position = np.array(
             [data_position.x, data_position.y, data_position.z], np.dtype("float64")
@@ -311,18 +332,16 @@ class SocialForceModelDriveAction(object):
         )
         # print(self.robot_orientation)
 
-    """
-    callback para obtener lista de info de agentes
-    """
-
     def agents_state_callback(self, data):
+        """
+        callback para obtener lista de info de agentes
+        """
         self.agents_states_register = data.agent_states
 
-    """
-    callback para obtener los datos de grupos de agentes
-    """
-
     def agents_groups_callback(self, data):
+        """
+        callback para obtener los datos de grupos de agentes
+        """
         self.agents_groups_register = data
 
         # * force functions
@@ -343,55 +362,36 @@ class SocialForceModelDriveAction(object):
         # print("desired force:", desired_force)
         return desired_force
 
-    """
-    funcion para obtener la fuerza de el obstaculo mas cercano conociendo la posicion exacta de todos ellos de manera estatica
-    """
-
     def obstacle_force_walls(self):
-        # obtener valores de el laser sus distancias
-        diff_robot_laser = []
-        for wall_data in self.walls_range:
-            distance = math.sqrt(
-                math.pow(wall_data.x - self.robot_position[0], 2)
-                + math.pow(wall_data.y - self.robot_position[1], 2)
-            )
-            diff_robot_laser.append(distance)
+        """
+        funcion para obtener la fuerza de el obstaculo mas cercano conociendo la posicion exacta de todos ellos de manera estatica
+        """
 
-        diff_robot_laser = np.array(diff_robot_laser, np.dtype("float64"))
+        self.nearest_obstacle = self.robot_position - self.nearest_obstacle
 
-        min_index = np.where(diff_robot_laser == np.amin(diff_robot_laser))
-        # print(min_index[0][0])
-
-        laser_pos = np.array(
-            [
-                self.walls_range[min_index[0][0]].x,
-                self.walls_range[min_index[0][0]].y,
-                0,
-            ],
-            np.dtype("float64"),
+        diff_robot_obstacle = np.sqrt(
+            np.power(self.nearest_obstacle[0] - self.robot_position[0], 2)
+            + np.power(self.nearest_obstacle[1] - self.robot_position[1], 2)
         )
 
-        laser_pos = self.robot_position - laser_pos
-
-        laser_vec_norm = np.linalg.norm(laser_pos)
-        if laser_vec_norm != 0:
-            norm_laser_direction = laser_pos / laser_vec_norm
+        obstacle_vec_norm = np.linalg.norm(self.nearest_obstacle)
+        if obstacle_vec_norm != 0:
+            norm_obstacle_direction = self.nearest_obstacle / obstacle_vec_norm
         else:
-            norm_laser_direction = np.array([0, 0, 0], np.dtype("float64"))
+            norm_obstacle_direction = np.array([0, 0, 0], np.dtype("float64"))
 
-        distance = diff_robot_laser[min_index] - self.agent_radius
+        distance = diff_robot_obstacle - self.agent_radius
         force_amount = math.exp(-distance / self.force_sigma_obstacle)
-        final_rep_force = force_amount * norm_laser_direction
+        final_rep_force = force_amount * norm_obstacle_direction
         # print("Obstacle force:", final_rep_force)
         return final_rep_force
         # else:
         #     return np.array([0, 0, 0], np.dtype("float64"))
 
-    """
-    funcion para obtener la fuerza de el obstaculo mas cercano
-    """
-
     def obstacle_force(self):
+        """
+        funcion para obtener la fuerza de el obstaculo mas cercano
+        """
         diff_robot_laser = []
         # obtener valores de el laser sus distancias
         for i in range(0, 360):
@@ -443,11 +443,10 @@ class SocialForceModelDriveAction(object):
         else:
             return np.array([0, 0, 0], np.dtype("float64"))
 
-    """
-    funcion para obtener la fuerzas sociales de los alrededores
-    """
-
     def social_force(self):
+        """
+        funcion para obtener la fuerzas sociales de los alrededores
+        """
 
         force = np.array([0, 0, 0], np.dtype("float64"))
 
