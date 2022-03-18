@@ -56,7 +56,14 @@ class SocialForceModelDriveAction(object):
         self.walls_range = []
 
         # nearest obstacle
-        self.nearest_obstacle = (0, 0)
+        self.nearest_obstacle = np.array(
+            [
+                0,
+                0,
+                0,
+            ],
+            np.dtype("float64"),
+        )
 
         self.agent_radius = 1
         self.force_sigma_obstacle = 0.8
@@ -113,20 +120,12 @@ class SocialForceModelDriveAction(object):
             "/scan_filtered", LaserScan, self.laser_scan_callback
         )
 
-        # self.obstacles_subs = rospy.Subscriber(
-        #     "/projected_map", OccupancyGrid, self.obstacle_map_callback
-        # )
-
-        self.ogm = OccupancyGridManager("/projected_map", subscribe_to_updates=True)
+        self.obstacles_subs = rospy.Subscriber(
+            "/projected_map", OccupancyGrid, self.obstacle_map_processing
+        )
 
         #! publishers
         self.velocity_pub = rospy.Publisher(self.cmd_vel_topic, Twist, queue_size=10)
-
-        # while len(self.walls_range) < 1:
-        #     self.walls_range = rospy.wait_for_message(
-        #         "/pedsim_visualizer/walls", Marker
-        #     )
-        #     self.walls_range = self.walls_range.points
 
     def check_goal_reached(self):
         if (
@@ -150,7 +149,7 @@ class SocialForceModelDriveAction(object):
     # * callbacks
 
     def execute_cb(self, goal):
-        rospy.loginfo("Starting social drive")
+        # rospy.loginfo("Starting social drive")
         r_sleep = rospy.Rate(30)
         cancel_move_pub = rospy.Publisher("/move_base/cancel", GoalID, queue_size=1)
         cancel_msg = GoalID()
@@ -167,21 +166,15 @@ class SocialForceModelDriveAction(object):
                 self.force_factor_obstacle * self.obstacle_force_walls()
             )
 
-            # print("obstacle force: ", obstacle_complete_force)
-
             social_complete_force = self.force_factor_social * self.social_force()
 
-            # print("social force: ", social_complete_force)
-
             desired_complete_force = self.force_factor_desired * self.desired_force()
-
-            # print("desired force: ", desired_complete_force)
 
             complete_force = (
                 desired_complete_force + social_complete_force + obstacle_complete_force
             )
 
-            print("complete force:", complete_force)
+            # print("complete force:", complete_force)
 
             # time.sleep(1)
 
@@ -202,7 +195,6 @@ class SocialForceModelDriveAction(object):
                 self.robot_orientation[2],
                 self.robot_orientation[3],
             )
-            # print("quat", quaternion)
 
             euler = tf.transformations.euler_from_quaternion(quaternion)
 
@@ -211,15 +203,9 @@ class SocialForceModelDriveAction(object):
             if robot_offset_angle < 0:
                 robot_offset_angle = 2 * math.pi + robot_offset_angle
 
-            # print("robot current vel:", self.robot_current_vel)
-
-            # print("offset_angle robot:", math.degrees(robot_offset_angle))
-
             angulo_velocidad = math.atan2(
                 self.robot_current_vel[0], self.robot_current_vel[1]
             )
-
-            # print("raw angle: ", math.degrees(angulo_velocidad))
 
             if angulo_velocidad > 0 and angulo_velocidad < (math.pi / 2):
                 angulo_velocidad = (math.pi / 2) - angulo_velocidad
@@ -231,8 +217,6 @@ class SocialForceModelDriveAction(object):
                 angulo_velocidad = math.pi / 2
             elif abs(angulo_velocidad) == (math.pi / 2):
                 angulo_velocidad = math.pi * 3 / 2
-
-            # print("angulo velocidad:", math.degrees(angulo_velocidad))
 
             if robot_offset_angle > (angulo_velocidad + math.pi):
                 yaw_error = angulo_velocidad + 2 * math.pi - robot_offset_angle
@@ -247,8 +231,6 @@ class SocialForceModelDriveAction(object):
                 yaw_error = 2 * math.pi + yaw_error
             elif yaw_error > math.pi:
                 yaw_error = -2 * math.pi + yaw_error
-
-            # print("angle error:", math.degrees(yaw_error))
 
             if abs(yaw_error) < 0.2:
                 w = 0
@@ -272,11 +254,8 @@ class SocialForceModelDriveAction(object):
 
             self.velocity_pub.publish(cmd_vel_msg)
 
-            print("v lineal:", vx)
-            print("w:", w)
-            # print("#####")
             self._feedback.feedback = "robot moving"
-            rospy.loginfo("robot_moving")
+            # rospy.loginfo("robot_moving")
             self._as.publish_feedback(self._feedback)
             r_sleep.sleep()
         cmd_vel_msg = Twist()
@@ -288,23 +267,49 @@ class SocialForceModelDriveAction(object):
         rospy.loginfo("waypoint reached")
         self._as.set_succeeded(self._result)
 
-    def obstacle_map_processing(self):
+    # define MAP_INDEX(map, i, j) ((i) + (j) * map.size_x)
+    def map_index(self, size_x, i, j):
+        return i + j * size_x
 
-        x, y, cost = self.ogm.get_closest_cell_over_cost(
-            x=self.robot_position[0],
-            y=self.robot_position[1],
-            cost_threshold=100,
-            max_radius=10,
-        )
+    # define MAP_WXGX(map, i) (map.origin_x + (i - map.size_x / 2) * map.scale)
 
-        self.nearest_obstacle = np.array(
-            [
-                x,
-                y,
-                0,
-            ],
-            np.dtype("float64"),
-        )
+    def map_wx(self, origin_x, size_x, scale, i):
+        return origin_x + (i - size_x / 2) * scale
+
+    def map_wy(self, origin_y, size_y, scale, j):
+        return origin_y + (j - size_y / 2) * scale
+
+    def obstacle_map_processing(self, data):
+
+        cur_nearest_obs = (0, 0)
+        cur_nearest_dist = 1000000000
+
+        map_size_x = data.info.width
+        map_size_y = data.info.height
+        map_scale = data.info.resolution
+        map_origin_x = data.info.origin.position.x + (map_size_x / 2) * map_scale
+        map_origin_y = data.info.origin.position.y + (map_size_y / 2) * map_scale
+
+        # map_origin_x = 0 + (map_size_x / 2) * map_scale
+        # map_origin_y = 0 + (map_size_y / 2) * map_scale
+
+        for j in range(0, map_size_y):
+            for i in range(0, map_size_x):
+                if data.data[self.map_index(map_size_x, i, j)] == 100:
+                    w_x = self.map_wx(map_origin_x, map_size_x, map_scale, i)
+                    w_y = self.map_wy(map_origin_y, map_size_y, map_scale, j)
+                    cur_dist = np.power(w_x - self.robot_position[0], 2) + np.power(
+                        w_y - self.robot_position[1], 2
+                    )
+
+                    if cur_dist < cur_nearest_dist:
+                        cur_nearest_dist = cur_dist
+                        cur_nearest_obs = (w_x, w_y)
+                        # print(cur_dist)
+
+        self.nearest_obstacle[0] = cur_nearest_obs[0]
+        self.nearest_obstacle[1] = cur_nearest_obs[1]
+        print("nearest_obstacle:", self.nearest_obstacle)
 
     def laser_scan_callback(self, data):
         """
@@ -330,7 +335,6 @@ class SocialForceModelDriveAction(object):
             ],
             np.dtype("float64"),
         )
-        # print(self.robot_orientation)
 
     def agents_state_callback(self, data):
         """
@@ -359,7 +363,6 @@ class SocialForceModelDriveAction(object):
         desired_force = (
             norm_desired_direction * self.robot_max_vel - self.robot_current_vel
         ) / self.relaxation_time
-        # print("desired force:", desired_force)
         return desired_force
 
     def obstacle_force_walls(self):
@@ -383,7 +386,6 @@ class SocialForceModelDriveAction(object):
         distance = diff_robot_obstacle - self.agent_radius
         force_amount = math.exp(-distance / self.force_sigma_obstacle)
         final_rep_force = force_amount * norm_obstacle_direction
-        # print("Obstacle force:", final_rep_force)
         return final_rep_force
         # else:
         #     return np.array([0, 0, 0], np.dtype("float64"))
@@ -415,8 +417,6 @@ class SocialForceModelDriveAction(object):
                 min_index = i
 
         if diff_robot_laser[min_index] < 1:
-            # print("minimo:", diff_robot_laser[min_index])
-            # obtengo la posicion del valor minimo del laser en distancia
             laser_pos = -1 * np.array(
                 [
                     self.laser_ranges[min_index]
@@ -427,7 +427,6 @@ class SocialForceModelDriveAction(object):
                 ],
                 np.dtype("float64"),
             )
-            # print("laser_pos:", laser_pos)
 
             laser_vec_norm = np.linalg.norm(laser_pos)
             if laser_vec_norm != 0:
@@ -438,7 +437,6 @@ class SocialForceModelDriveAction(object):
             distance = diff_robot_laser[min_index] - self.agent_radius
             force_amount = math.exp(-distance / self.force_sigma_obstacle)
             final_rep_force = force_amount * norm_laser_direction
-            # print("Obstacle force:", final_rep_force)
             return final_rep_force
         else:
             return np.array([0, 0, 0], np.dtype("float64"))
@@ -462,7 +460,6 @@ class SocialForceModelDriveAction(object):
                 )
                 - self.robot_position
             )
-            # print(diff_position)
 
             diff_direction = diff_position / np.linalg.norm(diff_position)
 
@@ -512,7 +509,6 @@ class SocialForceModelDriveAction(object):
             )
 
             force += force_velocity + force_angle
-            # print("Social force:", force)
         return force
 
 
