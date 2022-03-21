@@ -149,7 +149,7 @@ class SocialForceModelDriveAction(object):
     # * callbacks
 
     def execute_cb(self, goal):
-        # rospy.loginfo("Starting social drive")
+        rospy.loginfo("Starting social drive")
         r_sleep = rospy.Rate(30)
         cancel_move_pub = rospy.Publisher("/move_base/cancel", GoalID, queue_size=1)
         cancel_msg = GoalID()
@@ -255,7 +255,7 @@ class SocialForceModelDriveAction(object):
             self.velocity_pub.publish(cmd_vel_msg)
 
             self._feedback.feedback = "robot moving"
-            # rospy.loginfo("robot_moving")
+            rospy.loginfo("robot_moving")
             self._as.publish_feedback(self._feedback)
             r_sleep.sleep()
         cmd_vel_msg = Twist()
@@ -309,7 +309,7 @@ class SocialForceModelDriveAction(object):
 
         self.nearest_obstacle[0] = cur_nearest_obs[0]
         self.nearest_obstacle[1] = cur_nearest_obs[1]
-        print("nearest_obstacle:", self.nearest_obstacle)
+        # print("nearest_obstacle:", self.nearest_obstacle)
 
     def laser_scan_callback(self, data):
         """
@@ -370,12 +370,12 @@ class SocialForceModelDriveAction(object):
         funcion para obtener la fuerza de el obstaculo mas cercano conociendo la posicion exacta de todos ellos de manera estatica
         """
 
-        self.nearest_obstacle = self.robot_position - self.nearest_obstacle
-
         diff_robot_obstacle = np.sqrt(
             np.power(self.nearest_obstacle[0] - self.robot_position[0], 2)
             + np.power(self.nearest_obstacle[1] - self.robot_position[1], 2)
         )
+
+        self.nearest_obstacle = self.robot_position - self.nearest_obstacle
 
         obstacle_vec_norm = np.linalg.norm(self.nearest_obstacle)
         if obstacle_vec_norm != 0:
