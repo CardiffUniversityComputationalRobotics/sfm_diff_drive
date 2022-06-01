@@ -17,11 +17,9 @@ from sfm_diff_drive.msg import (
     SFMDriveAction,
 )
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
-from simple_pid import PID
 from actionlib_msgs.msg import GoalID
 from visualization_msgs.msg import Marker
 from nav_msgs.msg import OccupancyGrid
-from occupancy_grid_python import OccupancyGridManager
 
 
 class SocialForceModelDriveAction(object):
@@ -85,9 +83,6 @@ class SocialForceModelDriveAction(object):
 
         self.tf = TransformListener()
 
-        # PID for rotation
-        self.pid_rotation = PID(0.25, 0.1, 0.0001, setpoint=0)
-        self.pid_rotation.output_limits = (-0.75, 0.75)
 
         self._as = actionlib.SimpleActionServer(
             self._action_name,
