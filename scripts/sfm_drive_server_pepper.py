@@ -3,7 +3,7 @@
 import rospy
 
 from pedsim_msgs.msg import AgentStates, AgentGroups, LineObstacles
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, OccupancyGrid
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist, Point
 from tf import TransformListener
@@ -19,8 +19,6 @@ from sfm_diff_drive.msg import (
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from actionlib_msgs.msg import GoalID
 from visualization_msgs.msg import Marker
-from nav_msgs.msg import OccupancyGrid
-
 
 class SocialForceModelDriveAction(object):
 
