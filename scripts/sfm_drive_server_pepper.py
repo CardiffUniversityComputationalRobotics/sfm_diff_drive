@@ -368,11 +368,11 @@ class SocialForceModelDriveAction(object):
             + np.power(self.nearest_obstacle[1] - self.robot_position[1], 2)
         )
 
-        self.nearest_obstacle = self.robot_position - self.nearest_obstacle
+        nearest_obstacle_temp = self.robot_position - self.nearest_obstacle
 
-        obstacle_vec_norm = np.linalg.norm(self.nearest_obstacle)
+        obstacle_vec_norm = np.linalg.norm(nearest_obstacle_temp)
         if obstacle_vec_norm != 0:
-            norm_obstacle_direction = self.nearest_obstacle / obstacle_vec_norm
+            norm_obstacle_direction = nearest_obstacle_temp / obstacle_vec_norm
         else:
             norm_obstacle_direction = np.array([0, 0, 0], np.dtype("float64"))
 
