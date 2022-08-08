@@ -20,6 +20,7 @@ from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from actionlib_msgs.msg import GoalID
 from visualization_msgs.msg import Marker
 
+
 class SocialForceModelDriveAction(object):
 
     _feedback = SFMDriveFeedback()
@@ -79,8 +80,10 @@ class SocialForceModelDriveAction(object):
         self.robot_max_turn_vel = rospy.get_param("~max_vel_turn", 0.4)
         self.cmd_vel_topic = rospy.get_param("~cmd_vel_topic", "/cmd_vel")
 
-        self.tf = TransformListener()
+        self.waypoints = rospy.get_param("~waypoints", [])
+        self.using_waypoints = False
 
+        self.tf = TransformListener()
 
         self._as = actionlib.SimpleActionServer(
             self._action_name,
@@ -136,7 +139,17 @@ class SocialForceModelDriveAction(object):
             )
             <= 0.3
         ):
-            return True
+            if self.using_waypoints:
+                if len(self.waypoints != 1):
+                    self.current_waypoint.pop(0)
+                    self.current_waypoint = np.array(
+                        [self.waypoints[0][0], self.waypoints[0][1], 0],
+                        np.dtype("float64"),
+                    )
+                else:
+                    return True
+            else:
+                return True
         return False
 
     # * callbacks
@@ -149,9 +162,16 @@ class SocialForceModelDriveAction(object):
         cancel_move_pub.publish(cancel_msg)
 
         self.goal_set = True
-        self.current_waypoint = np.array(
-            [goal.goal.x, goal.goal.y, goal.goal.z], np.dtype("float64")
-        )
+
+        if len(self.waypoints) > 0:
+            self.current_waypoint = np.array(
+                [self.waypoints[0][0], self.waypoints[0][1], 0], np.dtype("float64")
+            )
+            self.using_waypoints = True
+        else:
+            self.current_waypoint = np.array(
+                [goal.goal.x, goal.goal.y, goal.goal.z], np.dtype("float64")
+            )
 
         while not self.check_goal_reached():
 
