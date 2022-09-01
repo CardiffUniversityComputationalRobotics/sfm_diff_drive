@@ -141,7 +141,7 @@ class SocialForceModelDriveAction(object):
         ):
             if self.using_waypoints:
                 if len(self.waypoints != 1):
-                    self.current_waypoint.pop(0)
+                    self.waypoints.pop(0)
                     self.current_waypoint = np.array(
                         [self.waypoints[0][0], self.waypoints[0][1], 0],
                         np.dtype("float64"),
