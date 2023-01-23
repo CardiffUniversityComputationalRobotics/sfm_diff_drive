@@ -83,6 +83,8 @@ class SocialForceModelDriveAction(object):
         self.waypoints = rospy.get_param("~waypoints", [])
         self.using_waypoints = False
 
+        self.map = OccupancyGrid()
+
         # topic configs
         self.global_plan_topic = rospy.get_param("~goal_path_topic", "")
         self.agent_states_topic = rospy.get_param(
@@ -126,7 +128,7 @@ class SocialForceModelDriveAction(object):
         )
 
         self.obstacles_subs = rospy.Subscriber(
-            self.map_topic, OccupancyGrid, self.obstacle_map_processing
+            self.map_topic, OccupancyGrid, self.map_callback
         )
 
         if self.global_plan_topic != "":
@@ -141,6 +143,7 @@ class SocialForceModelDriveAction(object):
         self.waypoints = []
         for pose in msg.poses:
             self.waypoints.append([pose.pose.position.x, pose.pose.position.y])
+        self.obstacle_map_processing()
 
     def check_goal_reached(self):
         if (
@@ -311,23 +314,26 @@ class SocialForceModelDriveAction(object):
     def map_wy(self, origin_y, size_y, scale, j):
         return origin_y + (j - size_y / 2) * scale
 
-    def obstacle_map_processing(self, data):
+    def map_callback(self, data):
+        self.map = data
+
+    def obstacle_map_processing(self):
 
         cur_nearest_obs = (0, 0)
         cur_nearest_dist = 1000000000
 
-        map_size_x = data.info.width
-        map_size_y = data.info.height
-        map_scale = data.info.resolution
-        map_origin_x = data.info.origin.position.x + (map_size_x / 2) * map_scale
-        map_origin_y = data.info.origin.position.y + (map_size_y / 2) * map_scale
+        map_size_x = self.map.info.width
+        map_size_y = self.map.info.height
+        map_scale = self.map.info.resolution
+        map_origin_x = self.map.info.origin.position.x + (map_size_x / 2) * map_scale
+        map_origin_y = self.map.info.origin.position.y + (map_size_y / 2) * map_scale
 
         # map_origin_x = 0 + (map_size_x / 2) * map_scale
         # map_origin_y = 0 + (map_size_y / 2) * map_scale
 
-        for j in range(0, map_size_y):
-            for i in range(0, map_size_x):
-                if data.data[self.map_index(map_size_x, i, j)] == 100:
+        for j in range(0, map_size_y, 2):
+            for i in range(0, map_size_x, 2):
+                if self.map.data[self.map_index(map_size_x, i, j)] == 100:
                     w_x = self.map_wx(map_origin_x, map_size_x, map_scale, i)
                     w_y = self.map_wy(map_origin_y, map_size_y, map_scale, j)
                     cur_dist = np.power(w_x - self.robot_position[0], 2) + np.power(
@@ -341,7 +347,7 @@ class SocialForceModelDriveAction(object):
 
         self.nearest_obstacle[0] = cur_nearest_obs[0]
         self.nearest_obstacle[1] = cur_nearest_obs[1]
-        # print("nearest_obstacle:", self.nearest_obstacle)
+        print("nearest_obstacle:", self.nearest_obstacle)
 
     def laser_scan_callback(self, data):
         """
