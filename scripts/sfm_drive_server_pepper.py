@@ -347,7 +347,7 @@ class SocialForceModelDriveAction(object):
 
         self.nearest_obstacle[0] = cur_nearest_obs[0]
         self.nearest_obstacle[1] = cur_nearest_obs[1]
-        print("nearest_obstacle:", self.nearest_obstacle)
+        # print("nearest_obstacle:", self.nearest_obstacle)
 
     def laser_scan_callback(self, data):
         """
