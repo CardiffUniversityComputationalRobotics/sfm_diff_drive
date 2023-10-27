@@ -197,6 +197,10 @@ class SocialForceModelDriveAction(object):
 
         while not self.check_goal_reached():
 
+            # print("processing map")
+
+            # self.obstacle_map_processing()
+
             obstacle_complete_force = (
                 self.force_factor_obstacle * self.obstacle_force_walls()
             )
