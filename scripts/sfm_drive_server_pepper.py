@@ -19,6 +19,7 @@ from sfm_diff_drive.msg import (
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 from actionlib_msgs.msg import GoalID
 from visualization_msgs.msg import Marker
+from std_msgs.msg import Bool
 
 
 class SocialForceModelDriveAction(object):
@@ -138,6 +139,7 @@ class SocialForceModelDriveAction(object):
 
         #! publishers
         self.velocity_pub = rospy.Publisher(self.cmd_vel_topic, Twist, queue_size=10)
+        self.goal_achieved_pub = rospy.Publisher("/goal_achieved", Bool, queue_size=10)
 
     def global_plan_callback(self, msg):
         self.waypoints = []
@@ -305,6 +307,7 @@ class SocialForceModelDriveAction(object):
         self._result.result = "waypoint reached"
         rospy.loginfo("waypoint reached")
         self._as.set_succeeded(self._result)
+        self.goal_achieved_pub.publish(True)
 
     # define MAP_INDEX(map, i, j) ((i) + (j) * map.size_x)
     def map_index(self, size_x, i, j):
