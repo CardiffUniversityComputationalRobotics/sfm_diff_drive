@@ -18,6 +18,6 @@ setup(
     license="MIT",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": [],
+        "console_scripts": ["sfm_driver_server = sfm_diff_drive.sfm_drive_server:main"],
     },
 )
