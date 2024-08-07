@@ -287,7 +287,7 @@ class SocialForceModelDriveAction(Node):
         distance = diff_robot_obstacle - self.agent_radius
         force_amount = math.exp(-distance / self.force_sigma_obstacle)
         final_rep_force = force_amount * norm_obstacle_direction
-        print(final_rep_force)
+        # print(final_rep_force)
         return final_rep_force
 
     def movement_callback(self):
