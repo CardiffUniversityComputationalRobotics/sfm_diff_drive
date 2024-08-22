@@ -106,7 +106,7 @@ class SocialForceModelDriveAction(Node):
         self.velocity_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
         self.goal_achieved_pub = self.create_publisher(Bool, "/goal_reached", 10)
 
-    def global_plan_callback(self, msg: Path):
+    def global_plan_callback(self, msg: Path2D):
         self.waypoints = []
         for pose in msg.waypoints:
             self.waypoints.append([pose.x, pose.y])
