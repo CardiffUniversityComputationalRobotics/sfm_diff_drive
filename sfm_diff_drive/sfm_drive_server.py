@@ -8,6 +8,7 @@ import numpy as np
 import math
 from std_msgs.msg import Bool
 from tf_transformations import euler_from_quaternion
+from esc_move_base_msgs.msg import Path2D
 
 
 class SocialForceModelDriveAction(Node):
@@ -98,7 +99,7 @@ class SocialForceModelDriveAction(Node):
 
         if self.global_plan_topic != "":
             self.global_plan_sub = self.create_subscription(
-                Path, self.global_plan_topic, self.global_plan_callback, 10
+                Path2D, self.global_plan_topic, self.global_plan_callback, 10
             )
 
         # Publishers
@@ -107,9 +108,8 @@ class SocialForceModelDriveAction(Node):
 
     def global_plan_callback(self, msg: Path):
         self.waypoints = []
-        for pose in msg.poses:
-
-            self.waypoints.append([pose.pose.position.x, pose.pose.position.y])
+        for pose in msg.waypoints:
+            self.waypoints.append([pose.x, pose.y])
         # print(self.waypoints)
         self.obstacle_map_processing()
 
