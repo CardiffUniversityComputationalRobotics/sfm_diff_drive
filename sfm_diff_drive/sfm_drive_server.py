@@ -3,7 +3,7 @@ from rclpy.node import Node
 from pedsim_msgs.msg import AgentStates, AgentGroups
 from nav_msgs.msg import Odometry, OccupancyGrid, Path
 from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, PoseStamped
 import numpy as np
 import math
 from std_msgs.msg import Bool
@@ -73,6 +73,8 @@ class SocialForceModelDriveAction(Node):
         self.laser_topic = self.get_parameter("laser_topic").value
         self.map_topic = self.get_parameter("map_topic").value
 
+        self.goal = None
+
         # Subscribers
         self.agents_states_subs = self.create_subscription(
             AgentStates, self.agent_states_topic, self.agents_state_callback, 10
@@ -97,6 +99,10 @@ class SocialForceModelDriveAction(Node):
             OccupancyGrid, self.map_topic, self.map_callback, 10
         )
 
+        self.goal_subs = self.create_subscription(
+            PoseStamped, "/goal_pose", self.global_goal_callback, 5
+        )
+
         if self.global_plan_topic != "":
             self.global_plan_sub = self.create_subscription(
                 Path2D, self.global_plan_topic, self.global_plan_callback, 10
@@ -106,10 +112,34 @@ class SocialForceModelDriveAction(Node):
         self.velocity_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
         self.goal_achieved_pub = self.create_publisher(Bool, "/goal_reached", 10)
 
+    def global_goal_callback(self, msg):
+        self.goal = msg
+
     def global_plan_callback(self, msg: Path2D):
         self.waypoints = []
-        for pose in msg.waypoints:
-            self.waypoints.append([pose.x, pose.y])
+
+        if len(msg.waypoints) > 1:
+
+            got_waypoints = msg.waypoints
+
+            got_waypoints.reverse()
+
+            for pos in got_waypoints:
+                if (
+                    math.sqrt(
+                        (pos.x - self.robot_position[0]) ** 2
+                        + (pos.y - self.robot_position[1]) ** 2
+                    )
+                    > 0.4
+                ):
+                    self.waypoints.append([pos.x, pos.y])
+                else:
+                    break
+
+            self.waypoints.reverse()
+
+        elif len(msg.waypoints) == 1:
+            self.waypoints.append([msg.waypoints[-1].x, msg.waypoints[-1].y])
         # print(self.waypoints)
         self.obstacle_map_processing()
 
@@ -117,7 +147,8 @@ class SocialForceModelDriveAction(Node):
         self.agents_states_register = msg.agent_states
 
     def agents_groups_callback(self, msg):
-        self.agents_groups_register = msg.agent_groups
+        # self.agents_groups_register = msg.agent_groups
+        pass
 
     def robot_pos_callback(self, msg: Odometry):
         """
@@ -298,12 +329,12 @@ class SocialForceModelDriveAction(Node):
             if len(self.waypoints) > 0:
                 if (
                     math.sqrt(
-                        math.pow(self.robot_position[0] - self.waypoints[-1][0], 2)
+                        math.pow(self.robot_position[0] - self.goal.pose.position.x, 2)
                     )
                     + math.sqrt(
-                        math.pow(self.robot_position[1] - self.waypoints[-1][1], 2)
+                        math.pow(self.robot_position[1] - self.goal.pose.position.y, 2)
                     )
-                    < 0.25
+                    < 0.5
                 ):
                     reached_goal = Bool()
                     reached_goal.data = True
